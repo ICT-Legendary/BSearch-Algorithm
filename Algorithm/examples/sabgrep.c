@@ -1,5 +1,5 @@
 /*
- * sasearch.c for libdivsufsort
+ * sabgrep.c for libdivsufsort
  * Copyright (c) 2003-2008 Yuta Mori All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person
@@ -73,6 +73,14 @@ saidx_t _get_saidx(FILE *SAF, saidx_t idx)
 	return value;
 }
 
+int compare_saidx(const void *p1, const void *p2)
+{
+	saidx_t s1, s2;
+	s1 = *((const saidx_t*)p1);
+	s2 = *((const saidx_t*)p2);
+	return (s1<s2) ? -1 : ((s1==s2)?0:1);
+}
+
 /*
  * @param argv[1] the pattern to be matched
  * @param argv[2] the file to be searched
@@ -86,7 +94,8 @@ main(int argc, const char *argv[]) {
   LFS_OFF_T n;		/*<< length of SAF */
   LFS_OFF_T n_suf;	/*<< length of TF */
   size_t Psize;
-  saidx_t i, size, left;
+  const int result_size = 65536;
+  saidx_t i, size, result[result_size];
   clock_t start, finish;
 
   if((argc == 1) ||
@@ -157,14 +166,17 @@ main(int argc, const char *argv[]) {
   /* Search and print */
   start = clock();
   //for (i = 0; i < 1000; i++)
-  size = sa_search_file(TF, (saidx_t)n,
+  size = sa_bitgrep_file(TF, (saidx_t)n,
                    (const sauchar_t *)P, (saidx_t)Psize,
-                   SAF, (saidx_t)n, &left);
+                   SAF, (saidx_t)n,
+  	  	  	  	   result, result_size);
+  if (size > 0)
+	  qsort(result, size, sizeof(*result), compare_saidx);
   finish = clock();
   for(i = 0; i < size; ++i) {
-    fprintf(stdout, "%" PRIdSAIDX_T "\n", _get_saidx(SAF, left + i));
+    fprintf(stdout, "0x%x\n", result[i]);
   }
-  fprintf(stderr, "%.3f ms or %d CPU ticks\n", 1000 * (double)(finish - start) / (double)CLOCKS_PER_SEC, (finish - start)/1000);
+  fprintf(stderr, "%.6f ms or %d CPU ticks\n", 1000000 * (double)(finish - start) / (double)CLOCKS_PER_SEC, (int)(finish - start));
 
   /* Deallocate memory. */
   fclose(SAF);

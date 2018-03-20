@@ -42,12 +42,12 @@ mmtregex mmtregex_from_str(const uint8_t *regex_str, size_t regex_len)
 		return NULL;
 	}
 
-	printf("%s: input pattern", __FUNCTION__);
-	for (i = 0; i < regex_len; i++) {
-		if (i != regex_len - 1 && (i % 8 == 0)) printf(" ");
-		printf("%c", regex_str[i]);
-	}
-	printf("\n");
+//	printf("%s: input pattern", __FUNCTION__);
+//	for (i = 0; i < regex_len; i++) {
+//		if (i != regex_len - 1 && (i % 8 == 0)) printf(" ");
+//		printf("%c", regex_str[i]);
+//	}
+//	printf("\n");
 
 	/* Allocate resource for the preg */
 	preg = malloc(sizeof(*preg));

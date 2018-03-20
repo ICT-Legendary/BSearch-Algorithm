@@ -28,7 +28,6 @@
 # include "config.h"
 #endif
 #include <stdio.h>
-#include <time.h>
 #if HAVE_STRING_H
 # include <string.h>
 #endif
@@ -65,29 +64,15 @@ print_help(const char *progname, int status) {
   exit(status);
 }
 
-saidx_t _get_saidx(FILE *SAF, saidx_t idx)
-{
-	saidx_t value;
-	fseek(SAF, idx * sizeof(idx), SEEK_SET);
-	fread(&value, sizeof(saidx_t), 1, SAF);
-	return value;
-}
-
-/*
- * @param argv[1] the pattern to be matched
- * @param argv[2] the file to be searched
- * @param argv[3] the suffix array file, which is built by from argv[2]
- */
 int
 main(int argc, const char *argv[]) {
-  FILE *SAF;		/*<< The file for suffix array */
-  FILE *TF;	/*<< The file to be searched */
+  FILE *fp;
   const char *P;
-  LFS_OFF_T n;		/*<< length of SAF */
-  LFS_OFF_T n_suf;	/*<< length of TF */
+  sauchar_t *T;
+  saidx_t *SA;
+  LFS_OFF_T n;
   size_t Psize;
   saidx_t i, size, left;
-  clock_t start, finish;
 
   if((argc == 1) ||
      (strcmp(argv[1], "-h") == 0) ||
@@ -97,11 +82,11 @@ main(int argc, const char *argv[]) {
   P = argv[1];
   Psize = strlen(P);
 
-  /* Open the raw file */
+  /* Open a file for reading. */
 #if HAVE_FOPEN_S
-  if(fopen_s(&TF, argv[2], "rb") != 0) {
+  if(fopen_s(&fp, argv[2], "rb") != 0) {
 #else
-  if((TF = LFS_FOPEN(argv[2], "rb")) == NULL) {
+  if((fp = LFS_FOPEN(argv[2], "rb")) == NULL) {
 #endif
     fprintf(stderr, "%s: Cannot open file `%s': ", argv[0], argv[2]);
     perror(NULL);
@@ -109,9 +94,9 @@ main(int argc, const char *argv[]) {
   }
 
   /* Get the file size. */
-  if(LFS_FSEEK(TF, 0, SEEK_END) == 0) {
-    n = LFS_FTELL(TF);
-    rewind(TF);
+  if(LFS_FSEEK(fp, 0, SEEK_END) == 0) {
+    n = LFS_FTELL(fp);
+    rewind(fp);
     if(n < 0) {
       fprintf(stderr, "%s: Cannot ftell `%s': ", argv[0], argv[2]);
       perror(NULL);
@@ -123,52 +108,58 @@ main(int argc, const char *argv[]) {
     exit(EXIT_FAILURE);
   }
 
+  /* Allocate 5n bytes of memory. */
+  T = (sauchar_t *)malloc((size_t)n * sizeof(sauchar_t));
+  SA = (saidx_t *)malloc((size_t)n * sizeof(saidx_t));
+  if((T == NULL) || (SA == NULL)) {
+    fprintf(stderr, "%s: Cannot allocate memory.\n", argv[0]);
+    exit(EXIT_FAILURE);
+  }
 
-  /* Open the suffix file */
+  /* Read n bytes of data. */
+  if(fread(T, sizeof(sauchar_t), (size_t)n, fp) != (size_t)n) {
+    fprintf(stderr, "%s: %s `%s': ",
+      argv[0],
+      (ferror(fp) || !feof(fp)) ? "Cannot read from" : "Unexpected EOF in",
+      argv[2]);
+    perror(NULL);
+    exit(EXIT_FAILURE);
+  }
+  fclose(fp);
+
+  /* Open the SA file for reading. */
 #if HAVE_FOPEN_S
-  if(fopen_s(&SAF, argv[3], "rb") != 0) {
+  if(fopen_s(&fp, argv[3], "rb") != 0) {
 #else
-  if((SAF = LFS_FOPEN(argv[3], "rb")) == NULL) {
+  if((fp = LFS_FOPEN(argv[3], "rb")) == NULL) {
 #endif
-    fprintf(stderr, "%s: Cannot open file `%s': ", argv[0], argv[2]);
+    fprintf(stderr, "%s: Cannot open file `%s': ", argv[0], argv[3]);
     perror(NULL);
     exit(EXIT_FAILURE);
   }
 
-  /* Get the file size. */
-  if(LFS_FSEEK(SAF, 0, SEEK_END) == 0) {
-    n_suf = LFS_FTELL(SAF);
-    rewind(SAF);
-    if(n_suf < 0) {
-      fprintf(stderr, "%s: Cannot ftell `%s': ", argv[0], argv[3]);
-      perror(NULL);
-      exit(EXIT_FAILURE);
-    }
-	if (n_suf != n * 4){
-	  fprintf(stderr, "%s: suffix array file %s is not correct", argv[0], argv[3]);
-      exit(EXIT_FAILURE);
-	}
-  } else {
-    fprintf(stderr, "%s: Cannot fseek `%s': ", argv[0], argv[3]);
+  /* Read n * sizeof(saidx_t) bytes of data. */
+  if(fread(SA, sizeof(saidx_t), (size_t)n, fp) != (size_t)n) {
+    fprintf(stderr, "%s: %s `%s': ",
+      argv[0],
+      (ferror(fp) || !feof(fp)) ? "Cannot read from" : "Unexpected EOF in",
+      argv[3]);
     perror(NULL);
     exit(EXIT_FAILURE);
   }
+  fclose(fp);
 
   /* Search and print */
-  start = clock();
-  //for (i = 0; i < 1000; i++)
-  size = sa_search_file(TF, (saidx_t)n,
+  size = sa_search(T, (saidx_t)n,
                    (const sauchar_t *)P, (saidx_t)Psize,
-                   SAF, (saidx_t)n, &left);
-  finish = clock();
+                   SA, (saidx_t)n, &left);
   for(i = 0; i < size; ++i) {
-    fprintf(stdout, "%" PRIdSAIDX_T "\n", _get_saidx(SAF, left + i));
+    fprintf(stdout, "%" PRIdSAIDX_T "\n", SA[left + i]);
   }
-  fprintf(stderr, "%.3f ms or %d CPU ticks\n", 1000 * (double)(finish - start) / (double)CLOCKS_PER_SEC, (finish - start)/1000);
 
   /* Deallocate memory. */
-  fclose(SAF);
-  fclose(TF);
+  free(SA);
+  free(T);
 
   return 0;
 }
